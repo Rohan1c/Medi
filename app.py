@@ -4,6 +4,9 @@ import random
 from datetime import datetime
 from typing import List, Dict, Any
 import json
+from prescription_parser import parse_prescription_text
+from validator import validate_prescription_data
+
 
 # Page config
 st.set_page_config(
@@ -500,14 +503,22 @@ def prescription_checker():
                 })
                 st.rerun()
         
+
         with col_validate:
-            can_validate = (
-                diagnosis.strip() and 
-                any(p['medication'].strip() for p in st.session_state.prescription_data['prescriptions'])
-            )
-            if st.button("Validate Prescription", type="primary", disabled=not can_validate):
+            if st.button("Validate Prescription"):
+                # Get free-text prescription from a text area
+                user_text = st.text_area("Paste prescription here:", height=150, placeholder="e.g., Paracetamol 500mg twice a day for 7 days; Ibuprofen 200mg once daily for 5 days")
+                
+                # Convert free-text into structured prescriptions
+                parsed_prescriptions = parse_prescription_text(user_text)
+                
+                # Overwrite the structured prescriptions in session state
+                st.session_state.prescription_data['prescriptions'] = parsed_prescriptions
+
+                # Call your validator with parsed prescriptions
                 validate_prescription()
                 st.rerun()
+
         
         with col_reset:
             if st.button("Reset"):
@@ -532,9 +543,22 @@ def prescription_checker():
         else:
             display_validation_results()
 
-def validate_prescription():
-    time.sleep(1)  # Simulate processing
+def validate_prescription_data(
+    diagnosis: str,
+    patient_info: Dict[str, str],
+    prescriptions: List[Dict[str, str]]
+) -> Dict:
+    """
+    Validates prescription data.
     
+    Args:
+        diagnosis: str, medical diagnosis
+        patient_info: dict with 'age', 'weight', 'allergies', 'conditions'
+        prescriptions: list of dicts with 'medication', 'dosage', 'frequency', 'duration'
+    
+    Returns:
+        dict with overall status, item-level messages, and recommendations
+    """
     result = {
         'overall': 'approved',
         'items': [],
@@ -545,65 +569,78 @@ def validate_prescription():
             'Schedule appropriate follow-up appointments'
         ]
     }
-    
-    for i, prescription in enumerate(st.session_state.prescription_data['prescriptions']):
-        if not prescription['medication'].strip():
-            continue
-            
+
+    age = patient_info.get('age', '')
+    allergies = patient_info.get('allergies', '').lower()
+    diagnosis_lower = diagnosis.lower()
+
+    for i, prescription in enumerate(prescriptions):
+        med = prescription.get('medication', '').strip()
+        dose = prescription.get('dosage', '').strip()
+        freq = prescription.get('frequency', '').strip()
         issues = []
         status = 'approved'
-        
-        # Mock validation logic
-        if not prescription['medication']:
-            issues.append('Medication name is required')
+
+        if not med:
+            issues.append("Medication name is required")
             status = 'rejected'
-        
-        if not prescription['dosage']:
-            issues.append('Dosage is required')
+
+        if not dose:
+            issues.append("Dosage is required")
             status = 'rejected'
-        
-        # Check allergies
-        allergies = st.session_state.prescription_data['patient_info']['allergies'].lower()
-        medication = prescription['medication'].lower()
-        
-        if 'penicillin' in medication and 'penicillin' in allergies:
-            issues.append('ALLERGY ALERT: Patient is allergic to penicillin')
+
+        # Allergy check example
+        if 'penicillin' in med.lower() and 'penicillin' in allergies:
+            issues.append("ALLERGY ALERT: Patient is allergic to penicillin")
             status = 'rejected'
-        
-        # Age checks
-        age = st.session_state.prescription_data['patient_info']['age']
-        if age and int(age) < 16 and 'aspirin' in medication:
-            issues.append('AGE WARNING: Aspirin not recommended for patients under 16')
-            status = 'warning'
-        
-        # Frequency checks
-        if '4 times' in prescription['frequency'].lower() and 'ibuprofen' in medication:
-            issues.append('DOSAGE WARNING: High frequency for ibuprofen, monitor for GI effects')
-            status = 'warning'
-        
-        # Diagnosis matching
-        diagnosis = st.session_state.prescription_data['diagnosis'].lower()
-        if 'infection' in diagnosis and not any(x in medication for x in ['antibiotic', 'amoxicillin', 'penicillin']):
-            issues.append('INFO: Consider antibiotic for bacterial infection')
+
+        # Age check example
+        if age.isdigit() and int(age) < 16 and 'aspirin' in med.lower():
+            issues.append("AGE WARNING: Aspirin not recommended for patients under 16")
             if status == 'approved':
                 status = 'warning'
-        
+
+        # Frequency check example
+        if 'ibuprofen' in med.lower() and '4 times' in freq.lower():
+            issues.append("DOSAGE WARNING: High frequency for ibuprofen, monitor for GI effects")
+            if status == 'approved':
+                status = 'warning'
+
+        # Diagnosis matching example
+        if 'infection' in diagnosis_lower and not any(x in med.lower() for x in ['antibiotic', 'amoxicillin', 'penicillin']):
+            issues.append("INFO: Consider antibiotic for bacterial infection")
+            if status == 'approved':
+                status = 'warning'
+
         if not issues:
-            issues.append('Prescription appears appropriate for the given diagnosis')
-        
+            issues.append("Prescription appears appropriate for the given diagnosis")
+
         result['items'].append({
-            'medication': prescription['medication'] or f"Medication {i + 1}",
+            'medication': med or f"Medication {i + 1}",
             'status': status,
             'message': '. '.join(issues)
         })
-    
+
     # Determine overall status
     if any(item['status'] == 'rejected' for item in result['items']):
         result['overall'] = 'rejected'
     elif any(item['status'] == 'warning' for item in result['items']):
         result['overall'] = 'warning'
-    
-    st.session_state.validation_result = result
+
+    return result
+
+
+# Quick test
+if __name__ == "__main__":
+    patient = {'age': '15', 'weight': '50', 'allergies': 'Penicillin', 'conditions': ''}
+    prescriptions = [
+        {'medication': 'Amoxicillin', 'dosage': '500mg', 'frequency': 'twice daily', 'duration': '7 days'},
+        {'medication': 'Aspirin', 'dosage': '100mg', 'frequency': 'once daily', 'duration': '5 days'}
+    ]
+    diagnosis = 'Bacterial infection'
+    res = validate_prescription_data(diagnosis, patient, prescriptions)
+    print(res)
+
 
 def display_validation_results():
     result = st.session_state.validation_result
