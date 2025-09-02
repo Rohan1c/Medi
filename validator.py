@@ -1,5 +1,3 @@
-# validator.py
-
 def validate_prescription_data(prescriptions, patient_info, diagnosis):
     """
     Validates prescriptions and returns a structured result.
