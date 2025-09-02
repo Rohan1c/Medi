@@ -1,3 +1,8 @@
 numpy
 pandas
 matplotlib
+scikit-learn
+seaborn
+flask
+streamlit
+cryptography
