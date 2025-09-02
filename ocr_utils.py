@@ -28,7 +28,7 @@ def parse_prescription(text: str):
             medicines.append({
                 "name": name.capitalize(),
                 "dosage": int(dosage),
-                "unit": unit if unit else "mg"  # default to mg
+                "unit": unit if unit else "mg"  
             })
     return medicines
 
