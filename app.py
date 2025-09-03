@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 import json
 from prescription_parser import parse_prescription_text
 from validator import validate_prescription_data
+from ocr_utils import extract_text_from_image, parse_prescription
 
 
 # Page config
@@ -503,11 +504,14 @@ def prescription_checker():
                 })
                 st.rerun()
         
-
         with col_validate:
             if st.button("Validate Prescription"):
                 # Get free-text prescription from a text area
-                user_text = st.text_area("Paste prescription here:", height=150, placeholder="e.g., Paracetamol 500mg twice a day for 7 days; Ibuprofen 200mg once daily for 5 days")
+                user_text = st.text_area(
+                    "Paste prescription here:", 
+                    height=150, 
+                    placeholder="e.g., Paracetamol 500mg twice a day for 7 days; Ibuprofen 200mg once daily for 5 days"
+                )
                 
                 # Convert free-text into structured prescriptions
                 parsed_prescriptions = parse_prescription_text(user_text)
@@ -515,10 +519,14 @@ def prescription_checker():
                 # Overwrite the structured prescriptions in session state
                 st.session_state.prescription_data['prescriptions'] = parsed_prescriptions
 
-                # Call your validator with parsed prescriptions
-                validate_prescription()
-                st.rerun()
+                # ✅ Call validator with all arguments
+                st.session_state.validation_result = validate_prescription_data(
+                    st.session_state.prescription_data['diagnosis'],
+                    st.session_state.prescription_data['patient_info'],
+                    st.session_state.prescription_data['prescriptions']
+                )
 
+                st.rerun()
         
         with col_reset:
             if st.button("Reset"):
@@ -534,6 +542,27 @@ def prescription_checker():
                 }
                 st.session_state.validation_result = None
                 st.rerun()
+
+        # --- Image upload feature ---
+        st.markdown("#### 📷 Upload Prescription Image")
+        uploaded_file = st.file_uploader("Upload prescription image", type=["jpg", "jpeg", "png"])
+        if uploaded_file is not None:
+            with open("temp_image.png", "wb") as f:
+                f.write(uploaded_file.getbuffer())
+
+            # Run OCR
+            raw_text = extract_text_from_image("temp_image.png")
+            st.text_area("Extracted OCR Text", raw_text, height=150)
+
+            # Parse OCR results into structured prescriptions
+            parsed_meds = parse_prescription(raw_text)
+            st.session_state.prescription_data['prescriptions'] = [
+                {"medication": med["name"], "dosage": f"{med['dosage']}{med['unit']}", "frequency": "", "duration": ""}
+                for med in parsed_meds
+            ]
+
+            st.success("✅ Prescription data extracted from image! Now you can validate.")
+        # --- End image upload feature ---
     
     with col2:
         st.markdown("#### 📋 Validation Results")
