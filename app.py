@@ -4,10 +4,9 @@ import random
 from datetime import datetime
 from typing import List, Dict, Any
 import json
-import re
-from PIL import Image
-import io
-import base64
+from prescription_parser import parse_prescription_text
+from validator import validate_prescription_data
+
 
 # Page config
 st.set_page_config(
@@ -17,68 +16,14 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for professional styling
+# Custom CSS for styling
 def load_css():
     st.markdown("""
     <style>
-    /* Import Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    
-    /* Root variables */
-    :root {
-        --font-size: 14px;
-        --background: #ffffff;
-        --foreground: #1f2937;
-        --card: #ffffff;
-        --card-foreground: #1f2937;
-        --primary: #030213;
-        --primary-foreground: #ffffff;
-        --secondary: #f1f5f9;
-        --secondary-foreground: #030213;
-        --muted: #ececf0;
-        --muted-foreground: #717182;
-        --accent: #e9ebef;
-        --accent-foreground: #030213;
-        --destructive: #d4183d;
-        --destructive-foreground: #ffffff;
-        --border: rgba(0, 0, 0, 0.1);
-        --input-background: #f3f3f5;
-        --radius: 0.625rem;
-        --success: #22c55e;
-        --warning: #f59e0b;
-        --error: #ef4444;
-    }
-    
-    .dark-theme {
-        --background: #1f2937;
-        --foreground: #f9fafb;
-        --card: #1f2937;
-        --card-foreground: #f9fafb;
-        --primary: #f9fafb;
-        --primary-foreground: #1f2937;
-        --secondary: #374151;
-        --secondary-foreground: #f9fafb;
-        --muted: #374151;
-        --muted-foreground: #9ca3af;
-        --accent: #374151;
-        --accent-foreground: #f9fafb;
-        --border: #374151;
-        --input-background: #374151;
-    }
-    
-    /* Apply theme */
-    .stApp {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        font-size: var(--font-size);
-        background-color: var(--background);
-        color: var(--foreground);
-    }
-    
-    /* Header styling */
     .main-header {
-        background: var(--card);
-        border-bottom: 1px solid var(--border);
+        background-color: var(--background-color);
         padding: 1rem 0;
+        border-bottom: 1px solid var(--border-color);
         margin-bottom: 2rem;
     }
     
@@ -98,334 +43,133 @@ def load_css():
     }
     
     .logo-icon {
-        background: var(--primary);
-        color: var(--primary-foreground);
+        background-color: var(--accent-color);
         padding: 0.5rem;
-        border-radius: var(--radius);
+        border-radius: 0.5rem;
         font-size: 1.5rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 40px;
-        height: 40px;
     }
     
-    .logo-text h1 {
-        margin: 0;
-        font-size: 1.25rem;
-        font-weight: 600;
-        color: var(--foreground);
-    }
-    
-    .logo-text p {
-        margin: 0;
-        font-size: 0.875rem;
-        color: var(--muted-foreground);
-    }
-    
-    /* Card styling */
-    .custom-card {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 1.5rem;
-        margin-bottom: 1rem;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    }
-    
-    .card-header {
-        margin-bottom: 1rem;
-        padding-bottom: 1rem;
-        border-bottom: 1px solid var(--border);
-    }
-    
-    .card-title {
-        font-size: 1.25rem;
-        font-weight: 600;
-        color: var(--foreground);
-        margin: 0 0 0.5rem 0;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-    
-    .card-description {
-        font-size: 0.875rem;
-        color: var(--muted-foreground);
-        margin: 0;
-    }
-    
-    /* Chat container */
     .chat-container {
-        height: 400px;
+        max-height: 400px;
         overflow-y: auto;
         padding: 1rem;
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        background-color: var(--background-color);
         margin-bottom: 1rem;
     }
     
     .message {
         margin-bottom: 1rem;
-        display: flex;
-        gap: 0.75rem;
-        animation: messageSlideIn 0.3s ease-out;
-    }
-    
-    .message.user {
-        justify-content: flex-end;
-    }
-    
-    .message.user .message-content {
-        flex-direction: row-reverse;
-    }
-    
-    .message-content {
-        display: flex;
-        gap: 0.75rem;
+        padding: 0.75rem;
+        border-radius: 0.5rem;
         max-width: 80%;
     }
     
-    .message-avatar {
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        font-size: 0.875rem;
+    .user-message {
+        background-color: #2563eb;
+        color: white;
+        margin-left: auto;
+        text-align: right;
     }
     
-    .message.user .message-avatar {
-        background: var(--primary);
-        color: var(--primary-foreground);
+    .bot-message {
+        background-color: var(--secondary-bg);
+        color: var(--text-color);
+        margin-right: auto;
     }
     
-    .message.bot .message-avatar {
-        background: var(--muted);
-        color: var(--muted-foreground);
-    }
-    
-    .message-bubble {
-        padding: 0.75rem;
-        border-radius: var(--radius);
-        font-size: 0.875rem;
-        line-height: 1.5;
-    }
-    
-    .message.user .message-bubble {
-        background: var(--primary);
-        color: var(--primary-foreground);
-    }
-    
-    .message.bot .message-bubble {
-        background: var(--muted);
-        color: var(--foreground);
-    }
-    
-    .message-time {
-        font-size: 0.75rem;
-        opacity: 0.7;
-        margin-top: 0.25rem;
-    }
-    
-    /* Status indicators */
-    .status-card {
-        border-left: 4px solid;
-        padding: 1rem;
+    .validation-card {
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        padding: 1.5rem;
         margin-bottom: 1rem;
-        border-radius: 0 var(--radius) var(--radius) 0;
+        background-color: var(--background-color);
     }
     
     .status-approved {
-        border-left-color: var(--success);
-        background: rgba(34, 197, 94, 0.1);
+        border-left: 4px solid #10b981;
+        background-color: #f0fdf4;
     }
     
     .status-warning {
-        border-left-color: var(--warning);
-        background: rgba(245, 158, 11, 0.1);
+        border-left: 4px solid #f59e0b;
+        background-color: #fffbeb;
     }
     
     .status-rejected {
-        border-left-color: var(--error);
-        background: rgba(239, 68, 68, 0.1);
+        border-left: 4px solid #ef4444;
+        background-color: #fef2f2;
     }
     
-    .dark-theme .status-approved {
-        background: rgba(34, 197, 94, 0.2);
+    .theme-light {
+        --background-color: #ffffff;
+        --text-color: #1f2937;
+        --border-color: #e5e7eb;
+        --accent-color: #dbeafe;
+        --secondary-bg: #f9fafb;
     }
     
-    .dark-theme .status-warning {
-        background: rgba(245, 158, 11, 0.2);
+    .theme-dark {
+        --background-color: #1f2937;
+        --text-color: #f9fafb;
+        --border-color: #374151;
+        --accent-color: #1e3a8a;
+        --secondary-bg: #374151;
     }
     
-    .dark-theme .status-rejected {
-        background: rgba(239, 68, 68, 0.2);
-    }
-    
-    /* Form elements */
-    .stTextInput > div > div > input,
-    .stTextArea > div > div > textarea,
-    .stSelectbox > div > div > select {
-        background: var(--input-background) !important;
-        border: 1px solid var(--border) !important;
-        border-radius: var(--radius) !important;
-        color: var(--foreground) !important;
-    }
-    
-    .stTextInput > div > div > input:focus,
-    .stTextArea > div > div > textarea:focus {
-        border-color: var(--primary) !important;
-        box-shadow: 0 0 0 2px rgba(3, 2, 19, 0.1) !important;
-    }
-    
-    /* Button styling */
-    .stButton > button {
-        background: var(--primary) !important;
-        color: var(--primary-foreground) !important;
-        border: none !important;
-        border-radius: var(--radius) !important;
-        font-weight: 500 !important;
-        transition: all 0.2s ease !important;
-    }
-    
-    .stButton > button:hover {
-        background: rgba(3, 2, 19, 0.9) !important;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    }
-    
-    .secondary-button {
-        background: transparent !important;
-        color: var(--primary) !important;
-        border: 1px solid var(--border) !important;
-    }
-    
-    .secondary-button:hover {
-        background: var(--accent) !important;
-    }
-    
-    /* File uploader */
-    .stFileUploader {
-        border: 2px dashed var(--border) !important;
-        border-radius: var(--radius) !important;
-        padding: 1rem !important;
-        text-align: center !important;
-        transition: all 0.2s ease !important;
-    }
-    
-    .stFileUploader:hover {
-        border-color: var(--primary) !important;
-        background: var(--accent) !important;
-    }
-    
-    /* Tabs */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 1rem;
-        background: var(--card);
-        border-radius: var(--radius);
-        padding: 0.25rem;
-        border: 1px solid var(--border);
+        gap: 2rem;
     }
     
     .stTabs [data-baseweb="tab"] {
-        padding: 0.75rem 1.5rem !important;
-        border-radius: calc(var(--radius) - 2px) !important;
-        font-weight: 500 !important;
-        color: var(--muted-foreground) !important;
-        background: transparent !important;
+        padding: 1rem 2rem;
+        border-radius: 0.5rem 0.5rem 0 0;
     }
     
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        background: var(--primary) !important;
-        color: var(--primary-foreground) !important;
+    .prescription-form {
+        background-color: var(--background-color);
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
     }
     
-    /* Warning/Disclaimer */
-    .disclaimer {
-        background: rgba(245, 158, 11, 0.1);
-        border: 1px solid var(--warning);
-        border-radius: var(--radius);
+    /* Apple system font */
+    .stApp {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    
+    /* Custom button styling */
+    .stButton > button {
+        background-color: #2563eb;
+        color: white;
+        border: none;
+        border-radius: 0.5rem;
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+        transition: background-color 0.2s;
+    }
+    
+    .stButton > button:hover {
+        background-color: #1d4ed8;
+    }
+    
+    /* Warning styling */
+    .warning-box {
+        background-color: #fef3c7;
+        border: 1px solid #f59e0b;
+        border-radius: 0.5rem;
         padding: 1rem;
         margin: 1rem 0;
-        color: var(--foreground);
+        color: #92400e;
     }
     
-    .disclaimer strong {
-        color: var(--warning);
-    }
-    
-    /* Animations */
-    @keyframes messageSlideIn {
-        from {
-            opacity: 0;
-            transform: translateY(10px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-    
-    /* Footer */
-    .footer {
-        margin-top: 3rem;
-        padding-top: 2rem;
-        border-top: 1px solid var(--border);
-        text-align: center;
-        color: var(--muted-foreground);
-        font-size: 0.875rem;
-    }
-    
-    /* Image preview */
-    .image-preview {
-        max-width: 200px;
-        border-radius: var(--radius);
-        margin-top: 0.5rem;
-    }
-    
-    /* Medication item */
-    .medication-item {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 1rem;
-        margin-bottom: 1rem;
-    }
-    
-    /* Grid layout */
-    .form-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 1rem;
-    }
-    
-    /* Hide streamlit elements */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
-    /* Custom spacing */
-    .element-container {
-        margin-bottom: 1rem;
-    }
-    
-    /* Responsive design */
-    @media (max-width: 768px) {
-        .header-content {
-            padding: 0 1rem;
-        }
-        
-        .form-grid {
-            grid-template-columns: 1fr;
-        }
-        
-        .message-content {
-            max-width: 95%;
-        }
+    /* Dark mode adjustments */
+    .theme-dark .warning-box {
+        background-color: #451a03;
+        border-color: #92400e;
+        color: #fbbf24;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -440,8 +184,7 @@ def init_session_state():
                 'id': '1',
                 'type': 'bot',
                 'content': "Hello! I'm your AI medical assistant. I'll help you understand your symptoms better. Please describe your main symptoms, and I'll ask follow-up questions to narrow down possible conditions.",
-                'timestamp': datetime.now(),
-                'image': None
+                'timestamp': datetime.now()
             }
         ]
     if 'current_symptoms' not in st.session_state:
@@ -461,73 +204,47 @@ def init_session_state():
         }
     if 'validation_result' not in st.session_state:
         st.session_state.validation_result = None
-    if 'prescription_image' not in st.session_state:
-        st.session_state.prescription_image = None
+
+def toggle_theme():
+    st.session_state.dark_mode = not st.session_state.dark_mode
 
 def render_header():
-    theme_class = "dark-theme" if st.session_state.dark_mode else ""
+    theme_class = "theme-dark" if st.session_state.dark_mode else "theme-light"
     
-    st.markdown(f"""
-    <div class="{theme_class}">
-        <div class="main-header">
-            <div class="header-content">
-                <div class="logo-section">
-                    <div class="logo-icon">🩺</div>
-                    <div class="logo-text">
-                        <h1>MedValidator AI</h1>
-                        <p>AI-Powered Medical Assistant</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 2, 1])
     
-    # Theme toggle in sidebar
-    with st.sidebar:
-        if st.button("🌙 Toggle Dark Mode" if not st.session_state.dark_mode else "☀️ Toggle Light Mode"):
-            st.session_state.dark_mode = not st.session_state.dark_mode
+    with col1:
+        st.markdown("🩺 **MedValidator AI**")
+        st.caption("AI-Powered Medical Assistant")
+    
+    with col3:
+        if st.button("🌙" if not st.session_state.dark_mode else "☀️", help="Toggle theme"):
+            toggle_theme()
             st.rerun()
 
 def diagnosis_chat():
-    theme_class = "dark-theme" if st.session_state.dark_mode else ""
-    
-    st.markdown(f"""
-    <div class="{theme_class}">
-        <div class="custom-card">
-            <div class="card-header">
-                <div class="card-title">
-                    🤖 AI Diagnosis Assistant
-                </div>
-                <div class="card-description">
-                    Describe your symptoms and I'll help narrow down possible conditions
-                </div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("### AI Diagnosis Assistant")
+    st.caption("Describe your symptoms and I'll help narrow down possible conditions")
     
     # Chat messages container
-    chat_html = f'<div class="{theme_class}"><div class="chat-container">'
+    chat_container = st.container()
     
-    for message in st.session_state.messages:
-        message_class = "user" if message['type'] == 'user' else "bot"
-        avatar_icon = "👤" if message['type'] == 'user' else "🤖"
-        
-        chat_html += f"""
-        <div class="message {message_class}">
-            <div class="message-content">
-                <div class="message-avatar">{avatar_icon}</div>
-                <div class="message-bubble">
-                    {message['content'].replace('\n', '<br>')}
-                    <div class="message-time">{message['timestamp'].strftime('%H:%M:%S')}</div>
+    with chat_container:
+        for message in st.session_state.messages:
+            if message['type'] == 'user':
+                st.markdown(f"""
+                <div class="message user-message">
+                    {message['content']}<br>
+                    <small>{message['timestamp'].strftime('%H:%M:%S')}</small>
                 </div>
-            </div>
-        </div>
-        """
-    
-    chat_html += '</div></div>'
-    st.markdown(chat_html, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="message bot-message">
+                    🤖 {message['content']}<br>
+                    <small>{message['timestamp'].strftime('%H:%M:%S')}</small>
+                </div>
+                """, unsafe_allow_html=True)
     
     # Input area
     st.markdown("---")
@@ -543,39 +260,27 @@ def diagnosis_chat():
         )
     
     with col2:
-        uploaded_image = st.file_uploader(
-            "Attach Image",
-            type=["png", "jpg", "jpeg"],
-            key="diagnosis_image",
-            help="Upload an image related to your symptoms"
-        )
-        
-        if st.button("Send Message", type="primary", use_container_width=True):
-            if user_input.strip() or uploaded_image:
-                process_user_message(user_input.strip(), uploaded_image)
-                st.rerun()
+        st.markdown("<br>", unsafe_allow_html=True)
+        send_button = st.button("Send", type="primary", use_container_width=True)
     
-    # Show uploaded image preview
-    if uploaded_image is not None:
-        st.image(uploaded_image, caption="Uploaded Image", width=200)
+    if send_button and user_input.strip():
+        process_user_message(user_input.strip())
+        st.rerun()
     
-    # Medical disclaimer
-    st.markdown(f"""
-    <div class="{theme_class}">
-        <div class="disclaimer">
-            <strong>⚠️ Medical Disclaimer:</strong> This AI assistant provides informational support only and should not replace professional medical advice, diagnosis, or treatment. Always consult qualified healthcare providers for medical concerns.
-        </div>
+    # Warning notice
+    st.markdown("""
+    <div class="warning-box">
+        <strong>⚠️ Medical Disclaimer:</strong> This AI assistant provides informational support only and should not replace professional medical advice, diagnosis, or treatment. Always consult qualified healthcare providers for medical concerns.
     </div>
     """, unsafe_allow_html=True)
 
-def process_user_message(user_input: str, image_file=None):
+def process_user_message(user_input: str):
     # Add user message
     user_message = {
         'id': str(int(time.time() * 1000)),
         'type': 'user',
         'content': user_input,
-        'timestamp': datetime.now(),
-        'image': image_file
+        'timestamp': datetime.now()
     }
     st.session_state.messages.append(user_message)
     
@@ -589,9 +294,11 @@ def process_user_message(user_input: str, image_file=None):
         st.session_state.current_symptoms = [symptom]
         st.session_state.diagnosis_stage = 'followup'
         
+        # Generate follow-up question
         bot_response = generate_followup_question(st.session_state.current_symptoms)
         
     elif st.session_state.diagnosis_stage == 'followup':
+        # Add more context
         symptom = {
             'name': user_input,
             'severity': 5,
@@ -618,8 +325,7 @@ def process_user_message(user_input: str, image_file=None):
         'id': str(int(time.time() * 1000) + 1),
         'type': 'bot',
         'content': bot_response,
-        'timestamp': datetime.now(),
-        'image': None
+        'timestamp': datetime.now()
     }
     st.session_state.messages.append(bot_message)
 
@@ -691,37 +397,22 @@ def generate_diagnosis(symptoms: List[Dict]) -> str:
     return response
 
 def prescription_checker():
-    theme_class = "dark-theme" if st.session_state.dark_mode else ""
+    st.markdown("### Prescription Checker")
+    st.caption("Validate prescriptions against patient information and diagnosis")
     
-    col1, col2 = st.columns([1, 1])
+    col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown(f"""
-        <div class="{theme_class}">
-            <div class="custom-card">
-                <div class="card-header">
-                    <div class="card-title">
-                        📋 Patient Information & Prescription
-                    </div>
-                    <div class="card-description">
-                        Enter patient details and prescribed medications for validation
-                    </div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("#### 👤 Patient Information & Diagnosis")
         
         # Diagnosis input
         diagnosis = st.text_area(
             "Medical Diagnosis *",
             value=st.session_state.prescription_data['diagnosis'],
             height=100,
-            placeholder="Enter the medical diagnosis...",
-            key="diagnosis_input"
+            placeholder="Enter the medical diagnosis..."
         )
         st.session_state.prescription_data['diagnosis'] = diagnosis
-        
-        st.markdown("### Patient Information")
         
         # Patient info
         col_age, col_weight = st.columns(2)
@@ -729,8 +420,7 @@ def prescription_checker():
             age = st.text_input(
                 "Age (years)",
                 value=st.session_state.prescription_data['patient_info']['age'],
-                placeholder="Years",
-                key="age_input"
+                placeholder="Years"
             )
             st.session_state.prescription_data['patient_info']['age'] = age
         
@@ -738,38 +428,26 @@ def prescription_checker():
             weight = st.text_input(
                 "Weight (kg)",
                 value=st.session_state.prescription_data['patient_info']['weight'],
-                placeholder="kg",
-                key="weight_input"
+                placeholder="kg"
             )
             st.session_state.prescription_data['patient_info']['weight'] = weight
         
         allergies = st.text_input(
             "Known Allergies",
             value=st.session_state.prescription_data['patient_info']['allergies'],
-            placeholder="e.g., Penicillin, Sulfa drugs",
-            key="allergies_input"
+            placeholder="e.g., Penicillin, Sulfa drugs"
         )
         st.session_state.prescription_data['patient_info']['allergies'] = allergies
         
         conditions = st.text_input(
             "Medical Conditions",
             value=st.session_state.prescription_data['patient_info']['conditions'],
-            placeholder="e.g., Diabetes, Hypertension",
-            key="conditions_input"
+            placeholder="e.g., Diabetes, Hypertension"
         )
         st.session_state.prescription_data['patient_info']['conditions'] = conditions
         
-        # Quick prescription entry
-        st.markdown("### Quick Prescription Entry")
-        prescription_text = st.text_area(
-            "Paste prescription here",
-            height=100,
-            placeholder="e.g., Paracetamol 500mg twice daily for 7 days; Ibuprofen 200mg once daily for 5 days",
-            key="prescription_text_input"
-        )
-        
         # Prescriptions
-        st.markdown("### Prescribed Medications")
+        st.markdown("#### 💊 Prescribed Medications")
         
         for i, prescription in enumerate(st.session_state.prescription_data['prescriptions']):
             with st.expander(f"Medication {i + 1}", expanded=True):
@@ -816,41 +494,32 @@ def prescription_checker():
                         st.session_state.prescription_data['prescriptions'].pop(i)
                         st.rerun()
         
-        # Action buttons
-        col_add, col_img, col_validate, col_reset = st.columns(4)
-
+        col_add, col_validate, col_reset = st.columns(3)
+        
         with col_add:
             if st.button("+ Add Medication"):
                 st.session_state.prescription_data['prescriptions'].append({
                     'medication': '', 'dosage': '', 'frequency': '', 'duration': ''
                 })
                 st.rerun()
-
-        with col_img:
-            prescription_image = st.file_uploader(
-                "Attach Prescription",
-                type=["png", "jpg", "jpeg", "pdf"],
-                key="prescription_image_upload",
-                help="Upload prescription image or PDF"
-            )
-            if prescription_image is not None:
-                st.session_state.prescription_image = prescription_image
+        
 
         with col_validate:
-            if st.button("Validate Prescription", type="primary"):
-                if prescription_text.strip():
-                    parsed_prescriptions = parse_prescription_text(prescription_text)
-                    if parsed_prescriptions:
-                        st.session_state.prescription_data['prescriptions'] = parsed_prescriptions
+            if st.button("Validate Prescription"):
+                # Get free-text prescription from a text area
+                user_text = st.text_area("Paste prescription here:", height=150, placeholder="e.g., Paracetamol 500mg twice a day for 7 days; Ibuprofen 200mg once daily for 5 days")
                 
-                result = validate_prescription_data(
-                    st.session_state.prescription_data['diagnosis'],
-                    st.session_state.prescription_data['patient_info'],
-                    st.session_state.prescription_data['prescriptions']
-                )
-                st.session_state.validation_result = result
+                # Convert free-text into structured prescriptions
+                parsed_prescriptions = parse_prescription_text(user_text)
+                
+                # Overwrite the structured prescriptions in session state
+                st.session_state.prescription_data['prescriptions'] = parsed_prescriptions
+
+                # Call your validator with parsed prescriptions
+                validate_prescription()
                 st.rerun()
 
+        
         with col_reset:
             if st.button("Reset"):
                 st.session_state.prescription_data = {
@@ -864,78 +533,32 @@ def prescription_checker():
                     'prescriptions': [{'medication': '', 'dosage': '', 'frequency': '', 'duration': ''}]
                 }
                 st.session_state.validation_result = None
-                st.session_state.prescription_image = None
                 st.rerun()
-        
-        # Show uploaded prescription image
-        if st.session_state.prescription_image is not None:
-            st.markdown("### Attached Prescription")
-            if st.session_state.prescription_image.type.startswith('image'):
-                st.image(st.session_state.prescription_image, caption="Prescription Image", width=300)
-            else:
-                st.write(f"📄 {st.session_state.prescription_image.name}")
     
     with col2:
-        st.markdown(f"""
-        <div class="{theme_class}">
-            <div class="custom-card">
-                <div class="card-header">
-                    <div class="card-title">
-                        📊 Validation Results
-                    </div>
-                    <div class="card-description">
-                        Review prescription safety and appropriateness
-                    </div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("#### 📋 Validation Results")
         
         if st.session_state.validation_result is None:
             st.info("Enter prescription details and click 'Validate Prescription' to see results")
         else:
             display_validation_results()
 
-def parse_prescription_text(text: str) -> List[Dict[str, str]]:
-    """Parse prescription text into structured format"""
-    if not text.strip():
-        return []
+def validate_prescription_data(
+    diagnosis: str,
+    patient_info: Dict[str, str],
+    prescriptions: List[Dict[str, str]]
+) -> Dict:
+    """
+    Validates prescription data.
     
-    lines = re.split(r'[;\n]', text)
-    parsed = []
+    Args:
+        diagnosis: str, medical diagnosis
+        patient_info: dict with 'age', 'weight', 'allergies', 'conditions'
+        prescriptions: list of dicts with 'medication', 'dosage', 'frequency', 'duration'
     
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-            
-        parts = line.split()
-        if len(parts) >= 2:
-            medication = parts[0]
-            
-            # Extract dosage (number + unit)
-            dosage_match = re.search(r'(\d+\s*(?:mg|g|ml|units?))', line, re.IGNORECASE)
-            dosage = dosage_match.group(1) if dosage_match else ''
-            
-            # Extract frequency
-            frequency_match = re.search(r'(once|twice|thrice|\d+\s*times?)\s*(?:daily|per\s*day|a\s*day)', line, re.IGNORECASE)
-            frequency = frequency_match.group(0) if frequency_match else ''
-            
-            # Extract duration
-            duration_match = re.search(r'(?:for\s*)?(\d+\s*(?:days?|weeks?|months?))', line, re.IGNORECASE)
-            duration = duration_match.group(1) if duration_match else ''
-            
-            parsed.append({
-                'medication': medication,
-                'dosage': dosage,
-                'frequency': frequency,
-                'duration': duration
-            })
-    
-    return parsed if parsed else []
-
-def validate_prescription_data(diagnosis: str, patient_info: Dict[str, str], prescriptions: List[Dict[str, str]]) -> Dict:
-    """Validate prescription data"""
+    Returns:
+        dict with overall status, item-level messages, and recommendations
+    """
     result = {
         'overall': 'approved',
         'items': [],
@@ -947,7 +570,7 @@ def validate_prescription_data(diagnosis: str, patient_info: Dict[str, str], pre
         ]
     }
 
-    age_str = patient_info.get('age', '')
+    age = patient_info.get('age', '')
     allergies = patient_info.get('allergies', '').lower()
     diagnosis_lower = diagnosis.lower()
 
@@ -966,26 +589,24 @@ def validate_prescription_data(diagnosis: str, patient_info: Dict[str, str], pre
             issues.append("Dosage is required")
             status = 'rejected'
 
-        # Allergy check
+        # Allergy check example
         if 'penicillin' in med.lower() and 'penicillin' in allergies:
             issues.append("ALLERGY ALERT: Patient is allergic to penicillin")
             status = 'rejected'
 
-        # Age check
-        if age_str.isdigit():
-            age = int(age_str)
-            if age < 16 and 'aspirin' in med.lower():
-                issues.append("AGE WARNING: Aspirin not recommended for patients under 16")
-                if status == 'approved':
-                    status = 'warning'
+        # Age check example
+        if age.isdigit() and int(age) < 16 and 'aspirin' in med.lower():
+            issues.append("AGE WARNING: Aspirin not recommended for patients under 16")
+            if status == 'approved':
+                status = 'warning'
 
-        # Frequency check
+        # Frequency check example
         if 'ibuprofen' in med.lower() and '4 times' in freq.lower():
             issues.append("DOSAGE WARNING: High frequency for ibuprofen, monitor for GI effects")
             if status == 'approved':
                 status = 'warning'
 
-        # Diagnosis matching
+        # Diagnosis matching example
         if 'infection' in diagnosis_lower and not any(x in med.lower() for x in ['antibiotic', 'amoxicillin', 'penicillin']):
             issues.append("INFO: Consider antibiotic for bacterial infection")
             if status == 'approved':
@@ -1008,54 +629,40 @@ def validate_prescription_data(diagnosis: str, patient_info: Dict[str, str], pre
 
     return result
 
+
+# Quick test
+if __name__ == "__main__":
+    patient = {'age': '15', 'weight': '50', 'allergies': 'Penicillin', 'conditions': ''}
+    prescriptions = [
+        {'medication': 'Amoxicillin', 'dosage': '500mg', 'frequency': 'twice daily', 'duration': '7 days'},
+        {'medication': 'Aspirin', 'dosage': '100mg', 'frequency': 'once daily', 'duration': '5 days'}
+    ]
+    diagnosis = 'Bacterial infection'
+    res = validate_prescription_data(diagnosis, patient, prescriptions)
+    print(res)
+
+
 def display_validation_results():
-    theme_class = "dark-theme" if st.session_state.dark_mode else ""
     result = st.session_state.validation_result
     
     # Overall status
     if result['overall'] == 'approved':
-        st.markdown(f"""
-        <div class="{theme_class}">
-            <div class="status-card status-approved">
-                <strong>✅ Prescription Approved</strong><br>
-                All medications appear safe and appropriate
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.success("✅ Prescription Approved - All medications appear safe and appropriate")
     elif result['overall'] == 'warning':
-        st.markdown(f"""
-        <div class="{theme_class}">
-            <div class="status-card status-warning">
-                <strong>⚠️ Prescription Approved with Warnings</strong><br>
-                Some concerns identified, review recommended
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.warning("⚠️ Prescription Approved with Warnings - Some concerns identified, review recommended")
     else:
-        st.markdown(f"""
-        <div class="{theme_class}">
-            <div class="status-card status-rejected">
-                <strong>❌ Prescription Requires Review</strong><br>
-                Critical issues found, do not dispense
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.error("❌ Prescription Requires Review - Critical issues found, do not dispense")
     
     # Individual medication results
     st.markdown("**Medication Analysis:**")
     
     for item in result['items']:
-        status_class = f"status-{item['status']}"
-        status_icon = "✅" if item['status'] == 'approved' else "⚠️" if item['status'] == 'warning' else "❌"
-        
-        st.markdown(f"""
-        <div class="{theme_class}">
-            <div class="status-card {status_class}">
-                <strong>{status_icon} {item['medication']}</strong><br>
-                {item['message']}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        if item['status'] == 'approved':
+            st.success(f"✅ **{item['medication']}**\n\n{item['message']}")
+        elif item['status'] == 'warning':
+            st.warning(f"⚠️ **{item['medication']}**\n\n{item['message']}")
+        else:
+            st.error(f"❌ **{item['medication']}**\n\n{item['message']}")
     
     # Recommendations
     st.markdown("**General Recommendations:**")
@@ -1066,8 +673,9 @@ def main():
     load_css()
     init_session_state()
     
-    # Apply theme class to entire app
-    theme_class = "dark-theme" if st.session_state.dark_mode else ""
+    # Apply theme
+    theme_class = "theme-dark" if st.session_state.dark_mode else "theme-light"
+    st.markdown(f'<div class="{theme_class}">', unsafe_allow_html=True)
     
     # Header
     render_header()
@@ -1082,21 +690,15 @@ def main():
         prescription_checker()
     
     # Footer
-    st.markdown(f"""
-    <div class="{theme_class}">
-        <div class="footer">
-            <div style="margin-bottom: 0.5rem;">
-                <span style="color: var(--warning);">⚠️</span>
-                <strong>Medical Disclaimer</strong>
-            </div>
-            <p>
-                This AI assistant tool provides informational support only and should not replace 
-                professional medical advice, diagnosis, or treatment. Always consult with qualified 
-                healthcare professionals for medical concerns.
-            </p>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown(
+        "<div style='text-align: center; color: #666; font-size: 0.9em;'>"
+        "⚠️ This is an AI assistant tool. Always consult with qualified healthcare professionals for medical advice."
+        "</div>",
+        unsafe_allow_html=True
+    )
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
